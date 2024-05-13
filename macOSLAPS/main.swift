@@ -150,22 +150,30 @@ func macOSLAPS() {
         verify_root()
         // Active Directory Password Change Function
         let ad_computer_record = ADTools.connect()
+        let ad_laps_schema = ADTools.check_laps_schema(computer_record: ad_computer_record)
+        // Set attriubutes according to LAPS schema used
+        var ad_attr_name_pw = "dsAttrTypeNative:ms-Mcs-AdmPwd"
+        var ad_attr_name_exp = "dsAttrTypeNative:ms-Mcs-AdmPwdExpirationTime"
+        if ad_laps_schema == "Windows LAPS schema element" {
+            ad_attr_name_pw = "dsAttrTypeNative:msLAPS-Password"
+            ad_attr_name_exp = "dsAttrTypeNative:msLAPS-PasswordExpirationTime"
+        }
         // Get Expiration Time from Active Directory
         var ad_exp_time = ""
         if Constants.pw_reset == true {
             ad_exp_time = "126227988000000000"
         } else {
-            ad_exp_time = ADTools.check_pw_expiration(computer_record: ad_computer_record)!
+            ad_exp_time = ADTools.check_pw_expiration(computer_record: ad_computer_record, attr_name_exp: ad_attr_name_exp)!
         }
         // Convert that time into a date
         let exp_date = TimeConversion.epoch(exp_time: ad_exp_time)
         // Compare that newly calculated date against now to see if a change is required
         if exp_date! < Date() {
             // Check if the domain controller that we are connected to is writable
-            ADTools.verify_dc_writability(computer_record: ad_computer_record)
+            ADTools.verify_dc_writability(computer_record: ad_computer_record, attr_name_exp: ad_attr_name_exp, attr_name_pw: ad_attr_name_pw)
             // Performs Password Change for local admin account
             laps_log.print("Password Change is required as the LAPS password for \(Constants.local_admin), has expired", .info)
-            ADTools.password_change(computer_record: ad_computer_record)
+            ADTools.password_change(computer_record: ad_computer_record, attr_name_exp: ad_attr_name_exp, attr_name_pw: ad_attr_name_pw)
         }
         else {
             let actual_exp_date = Constants.dateFormatter.string(from: exp_date!)

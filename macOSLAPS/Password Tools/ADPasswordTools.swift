@@ -52,33 +52,56 @@ public class ADTools: NSObject {
         }
         return(computer_record)
     }
-    class func check_pw_expiration(computer_record: Array<ODRecord>) -> String? {
+    class func check_laps_schema(computer_record: Array<ODRecord>) -> String? {
+        // Check, which LAPS schema applies, by querying for the attributes
+        var laps_schema_type = ""
+        do {
+            _ = try computer_record[0].values(forAttribute: "dsAttrTypeNative:ms-Mcs-AdmPwdExpirationTime")[0]
+            laps_schema_type = "Windows LAPS schema element"
+        } catch {
+            laps_log.print("Attribute ms-Mcs-AdmPwdExpirationTime not found, probing for msLAPS-PasswordExpirationTime...", .warn)
+        }
+        do {
+            _ = try computer_record[0].values(forAttribute: "dsAttrTypeNative:msLAPS-PasswordExpirationTime")[0]
+            laps_schema_type = "Windows LAPS schema element"
+        } catch {
+            laps_log.print("error while reading LAPS schema", .warn)
+        }
+        if laps_schema_type == "" {
+            laps_log.print("No valid LAPS schema found in ActiveDirectory.", .error)
+            exit(1)
+        } else {
+            laps_log.print("Using LAPS Schema: " + laps_schema_type, .info)
+        }
+        return(laps_schema_type)
+    }
+    class func check_pw_expiration(computer_record: Array<ODRecord>, attr_name_exp: String) -> String? {
         var expirationtime: Any
             expirationtime = "126227988000000000" // Setting a default expiration date of 01/01/2001
         do {
-            expirationtime = try computer_record[0].values(forAttribute: "dsAttrTypeNative:ms-Mcs-AdmPwdExpirationTime")[0]
+            expirationtime = try computer_record[0].values(forAttribute: attr_name_exp)[0]
         } catch {
             laps_log.print("There has never been a random password generated for this device. Setting a default expiration date of 01/01/2001 in Active Directory to force a password change...", .warn)
         }
         return(expirationtime) as? String
     }
-    class func verify_dc_writability(computer_record: Array<ODRecord>) {
+    class func verify_dc_writability(computer_record: Array<ODRecord>, attr_name_exp: String, attr_name_pw: String) {
         // Test that we can write to the domain controller we are currently connected to
         // before actually attemtping to write the new password
         do {
-            let expirationtime = try? computer_record[0].values(forAttribute: "dsAttrTypeNative:ms-Mcs-AdmPwdExpirationTime")
+            let expirationtime = try? computer_record[0].values(forAttribute: attr_name_exp)
             if expirationtime == nil {
-                try computer_record[0].setValue("Th1sIsN0tth3P@ssword", forAttribute: "dsAttrTypeNative:ms-Mcs-AdmPwd")
+                try computer_record[0].setValue("Th1sIsN0tth3P@ssword", forAttribute: attr_name_pw)
             }
             else {
-                try computer_record[0].setValue(expirationtime, forAttribute: "dsAttrTypeNative:ms-Mcs-AdmPwdExpirationTime")
+                try computer_record[0].setValue(expirationtime, forAttribute: attr_name_exp)
             }
         } catch {
             laps_log.print("Unable to test setting the current expiration time in Active Directory to the same value. Either the record is not writable or the domain controller is not writable.", .error)
             exit(1)
         }
     }
-    class func password_change(computer_record: Array<ODRecord>) {
+    class func password_change(computer_record: Array<ODRecord>, attr_name_exp: String, attr_name_pw: String) {
         let security_enabled_user = Determine_secureToken()
         // Generate random password
         let password = PasswordGen(length: Constants.password_length)
@@ -147,7 +170,7 @@ public class ADTools: NSObject {
                 exit(1)
             }
         }
-        save_status = ADTools.set_password(computer_record: computer_record, password: password, new_ad_exp_date: new_ad_exp_date!)
+        save_status = ADTools.set_password(computer_record: computer_record, password: password, new_ad_exp_date: new_ad_exp_date!, attr_name_exp: attr_name_exp, attr_name_pw: attr_name_pw)
         // Error catching should the Writing of the password fail. Revert the changes and exit
         if save_status != 0 {
             do {
@@ -185,16 +208,16 @@ public class ADTools: NSObject {
         }
         // Throw an error if we for some reason cannot connect to the Local Directory to perform the password change
     }
-    class func set_password(computer_record: Array<ODRecord>, password: String, new_ad_exp_date: String) -> OSStatus {
+    class func set_password(computer_record: Array<ODRecord>, password: String, new_ad_exp_date: String, attr_name_exp: String, attr_name_pw: String) -> OSStatus {
         do {
-            try computer_record[0].setValue(password, forAttribute: "dsAttrTypeNative:ms-Mcs-AdmPwd")
+            try computer_record[0].setValue(password, forAttribute: attr_name_pw)
         } catch {
             laps_log.print("There was an error setting the password for this device...", .error)
             return(1)
         }
         
         do {
-            try computer_record[0].setValue(new_ad_exp_date, forAttribute: "dsAttrTypeNative:ms-Mcs-AdmPwdExpirationTime")
+            try computer_record[0].setValue(new_ad_exp_date, forAttribute: attr_name_exp)
         } catch {
             laps_log.print("There was an error setting the new password expiration for this device...", .warn)
             return(2)
