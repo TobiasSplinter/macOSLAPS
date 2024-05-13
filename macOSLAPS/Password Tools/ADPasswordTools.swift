@@ -57,7 +57,7 @@ public class ADTools: NSObject {
         var laps_schema_type = ""
         do {
             _ = try computer_record[0].values(forAttribute: "dsAttrTypeNative:ms-Mcs-AdmPwdExpirationTime")[0]
-            laps_schema_type = "Windows LAPS schema element"
+            laps_schema_type = "Legacy Microsoft LAPS schema element"
         } catch {
             laps_log.print("Attribute ms-Mcs-AdmPwdExpirationTime not found, probing for msLAPS-PasswordExpirationTime...", .warn)
         }
